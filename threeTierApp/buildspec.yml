@@ -1,0 +1,48 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_REGION: "us-west-2"  # Update to your AWS region
+    FRONTEND_IMAGE_REPO: "survey3t"  # ECR repository for frontend
+    BACKEND_IMAGE_REPO: "survey3t"  # ECR repository for backend
+    POSTGRES_IMAGE_REPO: "survey3t"  # ECR repository for PostgreSQL (if applicable)
+    AWS_ACCOUNT_ID: "799344209838"  # Replace with your AWS account ID
+
+phases:
+  install:
+    runtime-versions:
+      docker: 20
+    commands:
+      - echo Installing Docker...
+      - apt-get update
+      - apt-get install -y docker.io
+      - echo Logging in to Amazon ECR...
+      - $(aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com)
+
+  pre_build:
+    commands:
+      - echo Creating ECR repositories if they don't exist...
+      - aws ecr create-repository --repository-name $FRONTEND_IMAGE_REPO || true
+      - aws ecr create-repository --repository-name $BACKEND_IMAGE_REPO || true
+      - aws ecr create-repository --repository-name $POSTGRES_IMAGE_REPO || true  # Only if you are using a custom image for PostgreSQL
+
+  build:
+    commands:
+      - echo Building Docker images...
+      - docker-compose -f docker-compose.yml build
+
+  post_build:
+    commands:
+      - echo Tagging Docker images...
+      - docker tag frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_IMAGE_REPO:latest
+      - docker tag backend:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_IMAGE_REPO:latest
+      - docker tag postgres:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$POSTGRES_IMAGE_REPO:latest  # Only if you are using a custom image
+      - echo Pushing Docker images to ECR...
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_IMAGE_REPO:latest
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_IMAGE_REPO:latest
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$POSTGRES_IMAGE_REPO:latest  # Only if you are using a custom image
+
+artifacts:
+  files:
+    - docker-compose.yml
+
